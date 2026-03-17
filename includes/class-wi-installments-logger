@@ -1,0 +1,162 @@
+<?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class WI_Installments_Logger {
+    private $log_dir;
+
+    public function __construct() {
+        $uploads       = wp_upload_dir();
+        $this->log_dir = trailingslashit( $uploads['basedir'] ) . 'wi-installments-logs/';
+
+        if ( ! file_exists( $this->log_dir ) ) {
+            wp_mkdir_p( $this->log_dir );
+        }
+    }
+
+    public function info( $provider, $action, $message, $data = [] ) {
+        $this->write( 'info', $provider, $action, $message, $data );
+    }
+
+    public function error( $provider, $action, $message, $data = [] ) {
+        $this->write( 'error', $provider, $action, $message, $data );
+    }
+
+    public function write( $level, $provider, $action, $message, $data = [] ) {
+        global $wpdb;
+
+        $request_id = isset( $data['request_id'] ) ? (int) $data['request_id'] : null;
+        $user_id    = get_current_user_id() ?: null;
+        $created_at = current_time( 'mysql' );
+
+        $request_url     = isset( $data['request_url'] ) ? $data['request_url'] : null;
+        $request_method  = isset( $data['request_method'] ) ? $data['request_method'] : null;
+        $request_headers = isset( $data['request_headers'] ) ? wp_json_encode( $this->mask_sensitive( $data['request_headers'] ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) : null;
+        $request_body    = isset( $data['request_body'] ) ? wp_json_encode( $data['request_body'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) : null;
+        $response_code   = isset( $data['response_code'] ) ? (int) $data['response_code'] : null;
+        $response_headers = isset( $data['response_headers'] ) ? wp_json_encode( $this->mask_sensitive( $data['response_headers'] ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) : null;
+        $response_body   = isset( $data['response_body'] ) ? ( is_string( $data['response_body'] ) ? $data['response_body'] : wp_json_encode( $data['response_body'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ) : null;
+        $context         = isset( $data['context'] ) ? wp_json_encode( $data['context'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) : null;
+
+        $wpdb->insert(
+            WI_Installments_DB::logs_table(),
+            [
+                'request_id'       => $request_id,
+                'provider'         => sanitize_text_field( $provider ),
+                'action_name'      => sanitize_text_field( $action ),
+                'level'            => sanitize_text_field( $level ),
+                'message'          => wp_strip_all_tags( $message ),
+                'request_url'      => $request_url,
+                'request_method'   => $request_method,
+                'request_headers'  => $request_headers,
+                'request_body'     => $request_body,
+                'response_code'    => $response_code,
+                'response_headers' => $response_headers,
+                'response_body'    => $response_body,
+                'context'          => $context,
+                'created_by'       => $user_id,
+                'created_at'       => $created_at,
+            ],
+            [ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%s' ]
+        );
+
+        $line = sprintf(
+            "[%s] [%s] [%s] [%s] %s %s",
+            current_time( 'Y-m-d H:i:s' ),
+            strtoupper( $level ),
+            $provider,
+            $action,
+            $message,
+            ! empty( $context ) ? $context : ''
+        );
+
+        $file = $this->log_dir . 'wi-installments-' . gmdate( 'Y-m-d' ) . '.log';
+        file_put_contents( $file, $line . PHP_EOL, FILE_APPEND | LOCK_EX );
+
+        if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+            error_log( $line );
+        }
+    }
+
+    public function get_recent_logs( $limit = 50 ) {
+        global $wpdb;
+        $limit = max( 1, (int) $limit );
+        return $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT * FROM ' . WI_Installments_DB::logs_table() . ' ORDER BY id DESC LIMIT %d',
+                $limit
+            ),
+            ARRAY_A
+        );
+    }
+
+    public function clear_logs_table() {
+        global $wpdb;
+
+        return $wpdb->query( 'TRUNCATE TABLE ' . WI_Installments_DB::logs_table() );
+    }
+
+    public function clear_log_files() {
+        $deleted = 0;
+
+        if ( ! is_dir( $this->log_dir ) ) {
+            return $deleted;
+        }
+
+        $files = glob( $this->log_dir . '*.log' );
+
+        if ( empty( $files ) ) {
+            return $deleted;
+        }
+
+        foreach ( $files as $file ) {
+            if ( is_file( $file ) && @unlink( $file ) ) {
+                $deleted++;
+            }
+        }
+
+        return $deleted;
+    }
+
+    public function get_log_dir() {
+        return $this->log_dir;
+    }
+
+    private function mask_sensitive( $data ) {
+        if ( ! is_array( $data ) ) {
+            return $data;
+        }
+
+        $sensitive_keys = [ 'authorization', 'api_key', 'api_secret', 'client_secret', 'access_token', 'password' ];
+        $masked         = [];
+
+        foreach ( $data as $key => $value ) {
+            $normalized_key = strtolower( (string) $key );
+
+            if ( in_array( $normalized_key, $sensitive_keys, true ) ) {
+                $masked[ $key ] = $this->mask_value( $value );
+                continue;
+            }
+
+            if ( is_array( $value ) ) {
+                $masked[ $key ] = $this->mask_sensitive( $value );
+            } else {
+                $masked[ $key ] = $value;
+            }
+        }
+
+        return $masked;
+    }
+
+    private function mask_value( $value ) {
+        $value = (string) $value;
+
+        if ( strlen( $value ) <= 8 ) {
+            return '********';
+        }
+
+        return substr( $value, 0, 4 ) . str_repeat( '*', max( 4, strlen( $value ) - 8 ) ) . substr( $value, -4 );
+    }
+}
