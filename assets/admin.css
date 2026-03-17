@@ -1,1 +1,82 @@
+.wi-installments-wrap .wi-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 320px));
+    gap: 20px;
+    margin-top: 24px;
+}
+
+.wi-installments-wrap .wi-provider-card,
+.wi-installments-wrap .wi-card {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.04);
+}
+
+.wi-installments-wrap .wi-provider-card {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.wi-installments-wrap .wi-provider-card--disabled {
+    opacity: .65;
+}
+
+.wi-installments-wrap .wi-provider-logo {
+    width: 96px;
+    height: 96px;
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 16px;
+}
+
+.wi-installments-wrap .wi-provider-logo--tbc {
+    background: #00A3E0;
+    color: #fff;
+}
+
+.wi-installments-wrap .wi-provider-logo--placeholder {
+    background: #f1f1f1;
+    color: #555;
+}
+
+.wi-installments-wrap .wi-provider-logo--bog {
+    background: #E31E24;
+    color: #fff;
+}
+
+.wi-installments-wrap .wi-provider-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.wi-installments-wrap .wi-provider-text,
+.wi-installments-wrap .wi-provider-mode {
+    color: #50575e;
+}
+
+.wi-installments-wrap .wi-grid-two {
+    display: grid;
+    grid-template-columns: minmax(320px, 760px) minmax(280px, 1fr);
+    gap: 20px;
+    align-items: start;
+    margin-top: 24px;
+}
+
+.wi-installments-wrap .wi-card--wide {
+    margin-top: 18px;
+}
+
+@media (max-width: 1100px) {
+    .wi-installments-wrap .wi-grid-two {
+        grid-template-columns: 1fr;
+    }
+}
 
